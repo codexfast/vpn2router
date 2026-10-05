@@ -1,0 +1,90 @@
+x-vpn-common: &vpn-common
+  image: qmcgaw/gluetun:latest
+  cap_add:
+    - NET_ADMIN
+  devices:
+    - /dev/net/tun:/dev/net/tun
+  environment:
+    - VPN_SERVICE_PROVIDER=protonvpn
+    - VPN_TYPE=openvpn
+    # as 10 conexoes usam a MESMA conta Proton (limite: 10 simultaneas)
+    - OPENVPN_USER=${PROTON_USER_1}
+    - OPENVPN_PASSWORD=${PROTON_PASS_1}
+    - SERVER_COUNTRIES=${SERVER_COUNTRIES_1}
+    # libera rede interna (Coolify + outros containers) por tras do firewall do Gluetun
+    - FIREWALL_OUTBOUND_SUBNETS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+    - HTTPPROXY=on
+    - HTTPPROXY_LISTENING_ADDRESS=:8888
+    - HTTPPROXY_STEALTH=on
+  expose:
+    - "8888"
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  vpn-1:
+    <<: *vpn-common
+  vpn-2:
+    <<: *vpn-common
+  vpn-3:
+    <<: *vpn-common
+  vpn-4:
+    <<: *vpn-common
+  vpn-5:
+    <<: *vpn-common
+  vpn-6:
+    <<: *vpn-common
+  vpn-7:
+    <<: *vpn-common
+  vpn-8:
+    <<: *vpn-common
+  vpn-9:
+    <<: *vpn-common
+  vpn-10:
+    <<: *vpn-common
+
+  # Se tiver uma 2a conta Proton (mais 10 tuneis), duplique blocos acima
+  # trocando OPENVPN_USER/PASSWORD para ${PROTON_USER_2}/${PROTON_PASS_2}
+  # e adicione em HTTP_UPSTREAMS. Script: ./scripts/add-vpn.sh 11
+
+  vpn-router:
+    build: ./router
+    expose:
+      - "8888"
+    # Sem "ports:" de proposito: acesso so via rede interna.
+    # No Coolify, outros apps usam http://vpn-router:8888
+    # Local: descomente a linha abaixo para debug
+    # ports:
+    #   - "${ROUTER_PORT:-8888}:8888"
+    environment:
+      - LISTEN_PORT=8888
+      - HTTP_UPSTREAMS=vpn-1:8888,vpn-2:8888,vpn-3:8888,vpn-4:8888,vpn-5:8888,vpn-6:8888,vpn-7:8888,vpn-8:8888,vpn-9:8888,vpn-10:8888
+      - ROUTER_USERS=${ROUTER_USERS}
+      - ROUTER_DEBUG=${ROUTER_DEBUG:-off}
+    depends_on:
+      - vpn-1
+      - vpn-2
+      - vpn-3
+      - vpn-4
+      - vpn-5
+      - vpn-6
+      - vpn-7
+      - vpn-8
+      - vpn-9
+      - vpn-10
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket;socket.create_connection(('127.0.0.1',8888),timeout=5).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
